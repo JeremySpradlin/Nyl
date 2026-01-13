@@ -1,7 +1,8 @@
 use ratatui::{
     prelude::*,
-    widgets::{Block, Borders, Paragraph, Tabs},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Tabs},
 };
+// use tui_textarea::TextArea;
 
 use crate::app::{App, TABS};
 
@@ -23,13 +24,49 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
     frame.render_widget(tabs, chunks[0]);
 
-    // ── Content placeholder ───────────────────────────────
-    let content = match app.current_tab {
-        0 => Paragraph::new("Chat will live here... (coming soon)"),
-        1 => Paragraph::new("Vault management coming next!"),
-        2 => Paragraph::new("Settings & about screen"),
-        _ => Paragraph::new("???"),
-    };
+    // ── Content ────────────────────────────────────────────
+    match app.current_tab {
+        0 => {
+            let inner_chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Min(0),     // chat history
+                    Constraint::Length(4),  // input field
+                ])
+                .split(chunks[1]);
 
-    frame.render_widget(content, chunks[1]);
+            // Message history (newest at bottom)
+            let items: Vec<ListItem> = app.messages
+                .iter()
+                .rev()
+                .map(|msg| ListItem::new(msg.as_str()))
+                .collect();
+
+            let chat_list = List::new(items)
+                .block(Block::default().title(" Chat ").borders(Borders::ALL));
+
+            frame.render_widget(chat_list, inner_chunks[0]);
+
+            // Input area - render TextArea directly (no .widget() anymore)
+            frame.render_widget(app.textarea.widget(), inner_chunks[1]);
+        }
+
+        1 => {
+            frame.render_widget(
+                Paragraph::new("Vault management coming soon..."),
+                chunks[1],
+            );
+        }
+
+        2 => {
+            frame.render_widget(
+                Paragraph::new("Settings & about screen"),
+                chunks[1],
+            );
+        }
+
+        _ => {
+            frame.render_widget(Paragraph::new("???"), chunks[1]);
+        }
+    }
 }
