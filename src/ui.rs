@@ -1,10 +1,9 @@
 use ratatui::{
     prelude::*,
-    widgets::{Block, Borders, List, ListItem, Paragraph, Tabs},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Tabs},
 };
-// use tui_textarea::TextArea;
 
-use crate::app::{App, TABS};
+use crate::app::{App, Sender, TABS};
 
 pub fn draw(frame: &mut Frame, app: &App) {
     let chunks = Layout::default()
@@ -15,58 +14,72 @@ pub fn draw(frame: &mut Frame, app: &App) {
         ])
         .split(frame.area());
 
-    // ── Tabs ───────────────────────────────────────────────
-    let tabs = Tabs::new(TABS.iter().cloned().map(Line::from))
+    // ── Tabs ─────────────────────────────────────────────
+    let tabs = Tabs::new(TABS.iter().copied().map(Line::from))
         .block(Block::default().title(" Nyl ").borders(Borders::ALL))
         .select(app.current_tab)
-        .style(Style::default().fg(Color::White))
         .highlight_style(Style::default().fg(Color::Yellow).bold());
 
     frame.render_widget(tabs, chunks[0]);
 
-    // ── Content ────────────────────────────────────────────
+    // ── Content ──────────────────────────────────────────
     match app.current_tab {
-        0 => {
-            let inner_chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Min(0),     // chat history
-                    Constraint::Length(4),  // input field
-                ])
-                .split(chunks[1]);
-
-            // Message history (newest at bottom)
-            let items: Vec<ListItem> = app.messages
-                .iter()
-                .rev()
-                .map(|msg| ListItem::new(msg.as_str()))
-                .collect();
-
-            let chat_list = List::new(items)
-                .block(Block::default().title(" Chat ").borders(Borders::ALL));
-
-            frame.render_widget(chat_list, inner_chunks[0]);
-
-            // Input area - render TextArea directly (no .widget() anymore)
-            frame.render_widget(app.textarea.widget(), inner_chunks[1]);
-        }
-
-        1 => {
-            frame.render_widget(
-                Paragraph::new("Vault management coming soon..."),
-                chunks[1],
-            );
-        }
-
-        2 => {
-            frame.render_widget(
-                Paragraph::new("Settings & about screen"),
-                chunks[1],
-            );
-        }
-
-        _ => {
-            frame.render_widget(Paragraph::new("???"), chunks[1]);
-        }
+        0 => draw_chat_tab(frame, app, chunks[1]),
+        1 => frame.render_widget(Paragraph::new("Vault (coming soon)"), chunks[1]),
+        2 => frame.render_widget(Paragraph::new("Settings / About"), chunks[1]),
+        _ => {}
     }
+}
+
+fn draw_chat_tab(frame: &mut Frame, app: &App, area: Rect) {
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(0),    // chat history
+            Constraint::Length(4), // input
+        ])
+        .split(area);
+
+    // ── Chat history ─────────────────────────────────────
+    let chat_block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Chat ");
+
+    frame.render_widget(chat_block.clone(), layout[0]);
+    let chat_area = chat_block.inner(layout[0]);
+
+    let items: Vec<ListItem> = app
+        .messages
+        .iter()
+        .map(|msg| ListItem::new(Text::from(format_message(msg.sender, &msg.text))))
+        .collect();
+
+    let list = List::new(items);
+
+    let mut state = ListState::default();
+    if !app.messages.is_empty() {
+        state.select(Some(app.messages.len() - 1)); // auto-scroll to bottom
+    }
+
+    frame.render_stateful_widget(list, chat_area, &mut state);
+
+    // ── Input ────────────────────────────────────────────
+    frame.render_widget(&app.textarea, layout[1]);
+}
+
+fn format_message(sender: Sender, text: &str) -> Vec<Line<'static>> {
+    let (label, color) = match sender {
+        Sender::User => ("You", Color::Green),
+        Sender::Assistant => ("Nyl", Color::Cyan),
+    };
+
+    let mut lines = Vec::new();
+
+    lines.push(Line::from(vec![
+        Span::styled(format!("{label}: "), Style::default().fg(color).bold()),
+        Span::raw(text.to_string()),
+    ]));
+
+    lines.push(Line::from("")); // blank line between messages
+    lines
 }

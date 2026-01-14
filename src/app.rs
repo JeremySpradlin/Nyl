@@ -1,11 +1,9 @@
-use ratatui::style::{Style, Modifier};
-use ratatui::widgets::{Block, Borders};
 use tui_textarea::TextArea;
 
 #[derive(Debug)]
 pub struct App {
     pub current_tab: usize,
-    pub messages: Vec<String>,
+    pub messages: Vec<Message>,
     pub textarea: TextArea<'static>,
     pub input_mode: InputMode,
 }
@@ -14,6 +12,18 @@ pub struct App {
 pub enum InputMode {
     Normal,
     Editing,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Message {
+    pub sender: Sender,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Sender {
+    User, 
+    Assistant,
 }
 
 pub const TABS: [&str; 3] = ["Chat", "Vaults", "Settings"];
@@ -33,11 +43,11 @@ impl Default for App {
         Self {
             current_tab: 0,
             messages: vec![
-                "Welcome to Nyl!".to_string(),
-                "Press 'i' to start typing a message...".to_string(),
+                Message { sender: Sender::Assistant, text: "Welcome to Nyl!".to_string() },
+                Message { sender: Sender::Assistant, text: "Press 'Esc' to navigate or quit...".to_string() },
             ],
             textarea,
-            input_mode: InputMode::Normal,
+            input_mode: InputMode::Editing,
         }
     }
 }

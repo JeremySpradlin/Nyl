@@ -6,13 +6,12 @@ use crossterm::{
 };
 use ratatui::{
     // prelude::*,
-    widgets::*,
     backend::CrosstermBackend,
     Terminal,
 };
 use std::io::{self, Stdout};
 
-use crate::app::{App, InputMode, TABS};
+use crate::app::{App, InputMode, TABS, Message, Sender};
 use tui_textarea::{TextArea, Input};   // ← important: add this
 
 mod app;
@@ -34,7 +33,7 @@ fn main() -> Result<()> {
                     KeyCode::Enter => {
                         let message = app.textarea.lines().join("\n").trim().to_string();
                         if !message.is_empty() {
-                            app.messages.push(message);
+                            app.messages.push(Message { sender: Sender::User, text: message });
                         }
                         app.textarea = TextArea::default();
                         app.textarea.set_block(
@@ -42,7 +41,6 @@ fn main() -> Result<()> {
                                 .borders(ratatui::widgets::Borders::ALL)
                                 .title(" Type message (Esc → cancel, Enter → send) ")
                         );
-                        app.input_mode = InputMode::Normal;
                     }
                     _ => {
                         // tui-textarea expects its own Input type
