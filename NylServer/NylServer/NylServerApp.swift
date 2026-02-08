@@ -6,31 +6,69 @@
 //
 
 import SwiftUI
+import Combine
+
+// Coordinator to manage service initialization (Singleton)
+@MainActor
+class AppCoordinator: ObservableObject {
+    static let shared = AppCoordinator()
+    
+    let weatherService = WeatherService()
+    let heartbeatService = HeartbeatService()
+    let serverService = ServerService()
+    let bonjourService = BonjourService()
+    
+    private var hasInitialized = false
+    
+    private init() {
+        print("📦 AppCoordinator singleton created")
+        // DO NOT start initialization here - will be called from AppDelegate
+    }
+    
+    func initialize() async {
+        guard !hasInitialized else { 
+            print("⚠️ Services already initialized, skipping...")
+            return 
+        }
+        hasInitialized = true
+        
+        print("🚀 Initializing services...")
+        
+        // Connect services
+        heartbeatService.weatherService = weatherService
+        serverService.heartbeatService = heartbeatService
+        serverService.weatherService = weatherService
+        
+        // Start heartbeat service
+        heartbeatService.start()
+        
+        // Request location for weather
+        weatherService.requestLocationAndFetchWeather()
+        
+        // Start HTTP server
+        do {
+            try await serverService.start()
+            
+            // Start Bonjour advertising
+            bonjourService.startAdvertising(port: serverService.port)
+        } catch {
+            print("❌ Failed to start server: \(error)")
+        }
+    }
+}
 
 @main
 struct NylServerApp: App {
-    @StateObject private var weatherService = WeatherService()
-    @StateObject private var heartbeatService = HeartbeatService()
-    
-    init() {
-        // Initialize services on app launch
-    }
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    private let coordinator = AppCoordinator.shared
     
     var body: some Scene {
         MenuBarExtra("Nyl", systemImage: "heart.text.square.fill") {
             ContentView()
-                .environmentObject(weatherService)
-                .environmentObject(heartbeatService)
-                .onAppear {
-                    // Connect services
-                    heartbeatService.weatherService = weatherService
-                    
-                    // Start heartbeat service
-                    heartbeatService.start()
-                    
-                    // Request location for weather
-                    weatherService.requestLocationAndFetchWeather()
-                }
+                .environmentObject(coordinator.weatherService)
+                .environmentObject(coordinator.heartbeatService)
+                .environmentObject(coordinator.serverService)
+                .environmentObject(coordinator.bonjourService)
         }
         .menuBarExtraStyle(.window)
     }

@@ -6,5 +6,11 @@
 	<true/>
 	<key>NSLocationUsageDescription</key>
 	<string>Nyl needs your location to provide local weather updates in the heartbeat service.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Nyl runs a local server to share data with other devices on your network.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_nyl._tcp</string>
+	</array>
 </dict>
 </plist>

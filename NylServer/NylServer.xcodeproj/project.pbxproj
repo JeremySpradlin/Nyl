@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		3F0120782F3653B800CF98F4 /* NylKit in Frameworks */ = {isa = PBXBuildFile; productRef = 3F0120772F3653B800CF98F4 /* NylKit */; };
+		3F898BA02F367FB30035005E /* Vapor in Frameworks */ = {isa = PBXBuildFile; productRef = 3F898B9F2F367FB30035005E /* Vapor */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -57,6 +58,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				3F0120782F3653B800CF98F4 /* NylKit in Frameworks */,
+				3F898BA02F367FB30035005E /* Vapor in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -126,6 +128,7 @@
 			name = NylServer;
 			packageProductDependencies = (
 				3F0120772F3653B800CF98F4 /* NylKit */,
+				3F898B9F2F367FB30035005E /* Vapor */,
 			);
 			productName = NylServer;
 			productReference = 3F01203A2F355CF100CF98F4 /* NylServer.app */;
@@ -209,6 +212,9 @@
 			);
 			mainGroup = 3F0120312F355CF100CF98F4;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				3F898B9E2F367DAC0035005E /* XCRemoteSwiftPackageReference "vapor" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3F01203B2F355CF100CF98F4 /* Products */;
 			projectDirPath = "";
@@ -656,10 +662,26 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		3F898B9E2F367DAC0035005E /* XCRemoteSwiftPackageReference "vapor" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/vapor/vapor.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.121.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		3F0120772F3653B800CF98F4 /* NylKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = NylKit;
+		};
+		3F898B9F2F367FB30035005E /* Vapor */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3F898B9E2F367DAC0035005E /* XCRemoteSwiftPackageReference "vapor" */;
+			productName = Vapor;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -10,6 +10,8 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject var weatherService: WeatherService
     @EnvironmentObject var heartbeatService: HeartbeatService
+    @EnvironmentObject var serverService: ServerService
+    @EnvironmentObject var bonjourService: BonjourService
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -121,6 +123,58 @@ struct ContentView: View {
             
             Divider()
             
+            // Server Section
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Server", systemImage: "server.rack")
+                    .font(.headline)
+                    .foregroundStyle(.green)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Status:")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(serverService.isRunning ? Color.green : Color.red)
+                                .frame(width: 8, height: 8)
+                            Text(serverService.isRunning ? "Running" : "Stopped")
+                                .fontWeight(.medium)
+                        }
+                    }
+                    
+                    HStack {
+                        Text("Port:")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("\(serverService.port)")
+                            .fontWeight(.medium)
+                    }
+                    
+                    HStack {
+                        Text("Bonjour:")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(bonjourService.isAdvertising ? Color.green : Color.gray)
+                                .frame(width: 8, height: 8)
+                            Text(bonjourService.isAdvertising ? "Advertising" : "Off")
+                                .fontWeight(.medium)
+                        }
+                    }
+                    
+                    if let error = serverService.error {
+                        Text(error)
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                    }
+                }
+                .font(.caption)
+            }
+            
+            Divider()
+            
             // Controls
             HStack {
                 Spacer()
@@ -132,7 +186,7 @@ struct ContentView: View {
             }
         }
         .padding()
-        .frame(width: 320)
+        .frame(width: 340)
     }
     
     // MARK: - Helper Methods
@@ -157,4 +211,6 @@ struct ContentView: View {
     ContentView()
         .environmentObject(WeatherService())
         .environmentObject(HeartbeatService())
+        .environmentObject(ServerService())
+        .environmentObject(BonjourService())
 }

@@ -71,3 +71,85 @@ public struct HeartbeatStatus: Sendable {
         self.isRunning = isRunning
     }
 }
+
+// MARK: - API Response Models
+
+/// Response for GET /v1/status endpoint
+public struct StatusResponse: Codable, Sendable {
+    /// Server information
+    public let server: ServerInfo
+    
+    /// Current heartbeat status
+    public let heartbeat: HeartbeatInfo
+    
+    /// Current weather data
+    public let weather: WeatherInfo?
+    
+    public init(server: ServerInfo, heartbeat: HeartbeatInfo, weather: WeatherInfo?) {
+        self.server = server
+        self.heartbeat = heartbeat
+        self.weather = weather
+    }
+}
+
+/// Server information
+public struct ServerInfo: Codable, Sendable {
+    /// Server version
+    public let version: String
+    
+    /// Server uptime in seconds
+    public let uptime: TimeInterval
+    
+    /// Port the server is running on
+    public let port: Int
+    
+    public init(version: String, uptime: TimeInterval, port: Int) {
+        self.version = version
+        self.uptime = uptime
+        self.port = port
+    }
+}
+
+/// Heartbeat information for API responses
+public struct HeartbeatInfo: Codable, Sendable {
+    /// Heartbeat interval in seconds
+    public let interval: TimeInterval
+    
+    /// Last run timestamp
+    public let lastRun: Date?
+    
+    /// Next run timestamp
+    public let nextRun: Date?
+    
+    /// Whether heartbeat is running
+    public let isRunning: Bool
+    
+    public init(interval: TimeInterval, lastRun: Date?, nextRun: Date?, isRunning: Bool) {
+        self.interval = interval
+        self.lastRun = lastRun
+        self.nextRun = nextRun
+        self.isRunning = isRunning
+    }
+}
+
+/// Weather information for API responses
+public struct WeatherInfo: Codable, Sendable {
+    /// Temperature in Fahrenheit
+    public let temperature: Double
+    
+    /// Weather condition description
+    public let condition: String
+    
+    /// Location name
+    public let location: String
+    
+    /// Last update timestamp
+    public let lastUpdated: Date
+    
+    public init(temperature: Double, condition: String, location: String, lastUpdated: Date) {
+        self.temperature = temperature
+        self.condition = condition
+        self.location = location
+        self.lastUpdated = lastUpdated
+    }
+}

@@ -16,12 +16,16 @@ class HeartbeatService: ObservableObject {
     @Published var lastRun: Date?
     @Published var nextRun: Date?
     @Published var isRunning: Bool = false
-    @Published var interval: TimeInterval = 1800 // 30 minutes default
+    @Published var interval: TimeInterval = 1800 { // 30 minutes default
+        didSet {
+            saveSettings()
+            scheduleNextRun()
+        }
+    }
     
     // MARK: - Private Properties
     
     private var timer: Timer?
-    private var cancellables = Set<AnyCancellable>()
     
     // MARK: - Dependencies
     
@@ -31,15 +35,6 @@ class HeartbeatService: ObservableObject {
     
     init() {
         loadSettings()
-        
-        // Observe interval changes to restart timer
-        $interval
-            .dropFirst() // Ignore initial value
-            .sink { [weak self] newInterval in
-                self?.saveSettings()
-                self?.scheduleNextRun()
-            }
-            .store(in: &cancellables)
     }
     
     // MARK: - Public Methods
