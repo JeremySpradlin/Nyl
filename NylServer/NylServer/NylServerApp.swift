@@ -36,6 +36,8 @@ class AppCoordinator: ObservableObject {
         
         // Connect services
         heartbeatService.weatherService = weatherService
+        heartbeatService.serverService = serverService
+        weatherService.serverService = serverService
         serverService.heartbeatService = heartbeatService
         serverService.weatherService = weatherService
         

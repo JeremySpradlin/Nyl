@@ -28,6 +28,10 @@ class WeatherService: NSObject, ObservableObject {
     private let locationManager = CLLocationManager()
     private var currentLocation: CLLocation?
     
+    // MARK: - Dependencies
+    
+    weak var serverService: ServerService?
+    
     // MARK: - Initialization
     
     override init() {
@@ -79,6 +83,9 @@ class WeatherService: NSObject, ObservableObject {
             // Reverse geocode to get location name
             await updateLocationName(for: location)
             
+            // Notify WebSocket clients about weather update
+            await serverService?.broadcastStatusUpdate()
+            
         } catch {
             self.error = "Failed to fetch weather: \(error.localizedDescription)"
         }
@@ -114,9 +121,15 @@ extension WeatherService: CLLocationManagerDelegate {
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         Task { @MainActor in
             let status = manager.authorizationStatus
+            #if os(macOS)
             if status == .authorizedAlways {
                 manager.requestLocation()
             }
+            #else
+            if status == .authorizedAlways || status == .authorizedWhenInUse {
+                manager.requestLocation()
+            }
+            #endif
         }
     }
     

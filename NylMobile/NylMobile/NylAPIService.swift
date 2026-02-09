@@ -18,11 +18,22 @@ class NylAPIService: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var error: String?
     @Published var lastUpdated: Date?
+    @Published var isWebSocketConnected: Bool = false
+    @Published var lastWebSocketEvent: WebSocketEventType?
     
     // MARK: - Private Properties
     
     private var baseURL: String?
     private let session: URLSession
+    private let wsClient = WebSocketClient()
+    private var cancellables = Set<AnyCancellable>()
+    
+    /// Cached JSON decoder for API responses
+    private let decoder: JSONDecoder = {
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .iso8601
+        return dec
+    }()
     
     // MARK: - Initialization
     
@@ -36,7 +47,29 @@ class NylAPIService: ObservableObject {
     
     /// Connect to a discovered server
     func connect(to server: DiscoveredServer) {
+        // Clear old subscriptions to prevent accumulation
+        cancellables.removeAll()
+        
         baseURL = server.baseURL
+        
+        // Observe WebSocket connection state
+        wsClient.$isConnected
+            .sink { [weak self] isConnected in
+                self?.isWebSocketConnected = isConnected
+            }
+            .store(in: &cancellables)
+        
+        // Set up WebSocket event handler
+        wsClient.onEventReceived = { [weak self] event in
+            Task { @MainActor [weak self] in
+                self?.handleWebSocketEvent(event)
+            }
+        }
+        
+        // Connect WebSocket
+        wsClient.connect(to: server.baseURL)
+        
+        // Fetch initial status via HTTP
         Task {
             await fetchStatus()
         }
@@ -72,9 +105,6 @@ class NylAPIService: ObservableObject {
                 return
             }
             
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            
             let statusResponse = try decoder.decode(StatusResponse.self, from: data)
             
             self.status = statusResponse
@@ -90,13 +120,55 @@ class NylAPIService: ObservableObject {
     
     /// Disconnect from server
     func disconnect() {
+        wsClient.disconnect()
+        cancellables.removeAll()
         baseURL = nil
         status = nil
         error = nil
         lastUpdated = nil
+        isWebSocketConnected = false
+        lastWebSocketEvent = nil
     }
     
     deinit {
+        // WebSocketClient will clean up in its own deinit
         session.invalidateAndCancel()
+    }
+    
+    // MARK: - Private Methods
+    
+    /// Handle incoming WebSocket events
+    private func handleWebSocketEvent(_ event: WebSocketEvent) {
+        // Track the last event type for UI indicator
+        lastWebSocketEvent = event.type
+        
+        // Clear the event indicator after 2 seconds
+        Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            self.lastWebSocketEvent = nil
+        }
+        
+        switch event.type {
+        case .connected:
+            print("✅ WebSocket connected")
+            if let payload = event.payload {
+                self.status = payload
+                self.lastUpdated = Date()
+            }
+            
+        case .statusUpdate:
+            if let payload = event.payload {
+                self.status = payload
+                self.lastUpdated = Date()
+                print("🔄 Status updated via WebSocket")
+            }
+            
+        case .heartbeatFired, .weatherUpdated:
+            // Server sends these events without payload
+            // Fetch fresh status via HTTP
+            Task {
+                await fetchStatus()
+            }
+        }
     }
 }

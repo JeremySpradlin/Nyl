@@ -153,3 +153,31 @@ public struct WeatherInfo: Codable, Sendable {
         self.lastUpdated = lastUpdated
     }
 }
+
+// MARK: - WebSocket
+
+/// Type of WebSocket event (server → client)
+public enum WebSocketEventType: String, Codable, Sendable {
+    case statusUpdate    // Full status snapshot
+    case heartbeatFired  // Heartbeat completed
+    case weatherUpdated  // Weather data changed
+    case connected       // Initial connection confirmation
+}
+
+/// WebSocket event message
+public struct WebSocketEvent: Codable, Sendable {
+    /// Type of event
+    public let type: WebSocketEventType
+
+    /// When the event occurred
+    public let timestamp: Date
+
+    /// Optional status payload
+    public let payload: StatusResponse?
+
+    public init(type: WebSocketEventType, timestamp: Date, payload: StatusResponse?) {
+        self.type = type
+        self.timestamp = timestamp
+        self.payload = payload
+    }
+}

@@ -25,9 +25,10 @@ class ServerService: ObservableObject {
     private let startTime = Date()
     
     // MARK: - Dependencies
-    
+
     weak var heartbeatService: HeartbeatService?
     weak var weatherService: WeatherService?
+    let wsManager = WebSocketManager()
     
     // MARK: - Public Methods
     
@@ -103,6 +104,34 @@ class ServerService: ObservableObject {
             let json = try encoder.encode(status)
             return Response(status: .ok, headers: ["Content-Type": "application/json"], body: .init(data: json))
         }
+
+        // WebSocket endpoint for real-time updates
+        app.webSocket("ws", "updates") { [weak self] req, ws async in
+            guard let self = self else { return }
+
+            let clientID = UUID()
+            await self.wsManager.addConnection(id: clientID, socket: ws)
+
+            // Send initial connection confirmation
+            let connectedEvent = WebSocketEvent(
+                type: .connected,
+                timestamp: Date(),
+                payload: await self.getStatus()
+            )
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            if let data = try? encoder.encode(connectedEvent),
+               let json = String(data: data, encoding: .utf8) {
+                try? await ws.send(json)
+            }
+
+            // Handle client disconnect
+            ws.onClose.whenComplete { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    await self?.wsManager.removeConnection(id: clientID)
+                }
+            }
+        }
     }
     
     private func getStatus() async -> StatusResponse {
@@ -138,6 +167,17 @@ class ServerService: ObservableObject {
             heartbeat: heartbeatInfo,
             weather: weatherInfo
         )
+    }
+
+    /// Broadcast a status update to all connected WebSocket clients
+    func broadcastStatusUpdate() async {
+        let status = await getStatus()
+        let event = WebSocketEvent(
+            type: .statusUpdate,
+            timestamp: Date(),
+            payload: status
+        )
+        wsManager.broadcast(event)
     }
 }
 

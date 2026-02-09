@@ -91,13 +91,42 @@ struct ContentView: View {
         ScrollView {
             VStack(spacing: 20) {
                 // Connection status
-                HStack {
-                    Circle()
-                        .fill(Color.green)
-                        .frame(width: 12, height: 12)
-                    Text("Connected to \(selectedServer?.name ?? "Server")")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                VStack(spacing: 8) {
+                    HStack {
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 12, height: 12)
+                        Text("Connected to \(selectedServer?.name ?? "Server")")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    
+                    // WebSocket status indicator
+                    HStack(spacing: 8) {
+                        Image(systemName: apiService.isWebSocketConnected ? "wifi" : "wifi.slash")
+                            .foregroundStyle(apiService.isWebSocketConnected ? .green : .red)
+                            .font(.caption)
+                        
+                        Text(apiService.isWebSocketConnected ? "Live updates active" : "Live updates offline")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        
+                        Spacer()
+                        
+                        // Event indicator
+                        if let eventType = apiService.lastWebSocketEvent {
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(Color.blue)
+                                    .frame(width: 6, height: 6)
+                                Text(eventType.rawValue)
+                                    .font(.caption2)
+                                    .foregroundStyle(.blue)
+                            }
+                            .transition(.opacity)
+                        }
+                    }
                 }
                 .padding()
                 .background(Color.green.opacity(0.1))
@@ -128,10 +157,10 @@ struct ContentView: View {
                         infoRow(label: "Status", value: status.heartbeat.isRunning ? "Running" : "Stopped")
                         infoRow(label: "Interval", value: formatInterval(status.heartbeat.interval))
                         if let lastRun = status.heartbeat.lastRun {
-                            infoRow(label: "Last Run", value: formatDate(lastRun))
+                            infoRowWithDate(label: "Last Run", date: lastRun)
                         }
                         if let nextRun = status.heartbeat.nextRun {
-                            infoRow(label: "Next Run", value: formatDate(nextRun))
+                            infoRowWithDate(label: "Next Run", date: nextRun)
                         }
                     }
                     
@@ -150,18 +179,24 @@ struct ContentView: View {
                                 VStack(alignment: .trailing, spacing: 4) {
                                     Text(weather.location)
                                         .font(.caption)
-                                    Text("Updated \(formatDate(weather.lastUpdated))")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
+                                    HStack(spacing: 2) {
+                                        Text("Updated")
+                                        Text(weather.lastUpdated, style: .relative)
+                                    }
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
                                 }
                             }
                         }
                     }
                     
                     if let lastUpdated = apiService.lastUpdated {
-                        Text("Last updated \(formatDate(lastUpdated))")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 4) {
+                            Text("Last updated")
+                            Text(lastUpdated, style: .relative)
+                        }
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                     }
                 }
                 
@@ -209,6 +244,17 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
             Spacer()
             Text(value)
+                .fontWeight(.medium)
+        }
+        .font(.subheadline)
+    }
+    
+    private func infoRowWithDate(label: String, date: Date) -> some View {
+        HStack {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(date, style: .relative)
                 .fontWeight(.medium)
         }
         .font(.subheadline)

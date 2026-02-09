@@ -30,6 +30,7 @@ class HeartbeatService: ObservableObject {
     // MARK: - Dependencies
     
     weak var weatherService: WeatherService?
+    weak var serverService: ServerService?
     
     // MARK: - Initialization
     
@@ -92,6 +93,9 @@ class HeartbeatService: ObservableObject {
         
         // Fetch weather update
         await weatherService?.fetchWeather()
+        
+        // Notify WebSocket clients about heartbeat completion
+        await serverService?.broadcastStatusUpdate()
         
         // Future: Add more heartbeat tasks here
         // - Check messages
