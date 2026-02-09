@@ -20,6 +20,7 @@ class NylAPIService: ObservableObject {
     @Published var lastUpdated: Date?
     @Published var isWebSocketConnected: Bool = false
     @Published var lastWebSocketEvent: WebSocketEventType?
+    @Published var modelsResponse: ModelsResponse?
     
     // MARK: - Private Properties
     
@@ -115,6 +116,91 @@ class NylAPIService: ObservableObject {
             self.error = "Failed to fetch status: \(error.localizedDescription)"
         }
         
+        isLoading = false
+    }
+
+    /// Fetch available models from the server
+    func fetchModels() async {
+        guard let baseURL = baseURL else {
+            error = "No server connected"
+            return
+        }
+
+        guard let url = URL(string: "\(baseURL)/v1/models") else {
+            error = "Invalid URL"
+            return
+        }
+
+        isLoading = true
+        error = nil
+
+        do {
+            let (data, response) = try await session.data(from: url)
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                error = "Invalid response"
+                isLoading = false
+                return
+            }
+
+            guard httpResponse.statusCode == 200 else {
+                error = "Server error: \(httpResponse.statusCode)"
+                isLoading = false
+                return
+            }
+
+            let models = try decoder.decode(ModelsResponse.self, from: data)
+            self.modelsResponse = models
+        } catch {
+            self.error = "Failed to fetch models: \(error.localizedDescription)"
+        }
+
+        isLoading = false
+    }
+
+    /// Update selected model on the server
+    func selectModel(_ model: String) async {
+        guard let baseURL = baseURL else {
+            error = "No server connected"
+            return
+        }
+
+        guard let url = URL(string: "\(baseURL)/v1/models/selected") else {
+            error = "Invalid URL"
+            return
+        }
+
+        isLoading = true
+        error = nil
+
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "PUT"
+            request.setValue("application/json", forHTTPHeaderField: "content-type")
+
+            let payload = SelectModelRequest(model: model)
+            request.httpBody = try JSONEncoder().encode(payload)
+
+            let (data, response) = try await session.data(for: request)
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                error = "Invalid response"
+                isLoading = false
+                return
+            }
+
+            guard httpResponse.statusCode == 200 else {
+                error = "Server error: \(httpResponse.statusCode)"
+                isLoading = false
+                return
+            }
+
+            let models = try decoder.decode(ModelsResponse.self, from: data)
+            self.modelsResponse = models
+        } catch {
+            self.error = "Failed to update model: \(error.localizedDescription)"
+        }
+
         isLoading = false
     }
     

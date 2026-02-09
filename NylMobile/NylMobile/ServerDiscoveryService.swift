@@ -209,7 +209,7 @@ class ServerDiscoveryService: ObservableObject {
 
 // MARK: - Models
 
-struct DiscoveredServer: Identifiable {
+struct DiscoveredServer: Identifiable, Equatable {
     let id = UUID()
     let name: String
     let host: String

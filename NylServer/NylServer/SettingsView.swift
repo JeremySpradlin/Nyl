@@ -21,10 +21,10 @@ struct SettingsView: View {
             
             AISettingsView(settingsService: settingsService)
                 .tabItem {
-                    Label("AI Configuration", systemImage: "brain")
+                    Label("AI", systemImage: "brain")
                 }
         }
-        .frame(width: 600, height: 500)
+        .frame(width: 650, height: 550)
     }
 }
 
@@ -36,37 +36,34 @@ struct GeneralSettingsView: View {
     var body: some View {
         Form {
             Section {
-                HStack {
-                    Text("Heartbeat Interval:")
-                        .frame(width: 150, alignment: .trailing)
-                    
-                    TextField("Seconds", value: $settingsService.settings.heartbeatInterval, format: .number)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 100)
-                    
-                    Text("seconds (\(formattedInterval))")
-                        .foregroundColor(.secondary)
+                LabeledContent("Heartbeat Interval:") {
+                    HStack(spacing: 8) {
+                        TextField("", value: $settingsService.settings.heartbeatInterval, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 70)
+                            .multilineTextAlignment(.trailing)
+                        
+                        Text("seconds")
+                            .foregroundStyle(.secondary)
+                        
+                        Text("(\(formattedInterval))")
+                            .foregroundStyle(.tertiary)
+                            .font(.caption)
+                    }
                 }
                 
-                HStack {
-                    Text("Weather Location:")
-                        .frame(width: 150, alignment: .trailing)
-                    
+                LabeledContent("Weather Location:") {
                     TextField("Auto-detect", text: Binding(
                         get: { settingsService.settings.weatherLocation ?? "" },
                         set: { settingsService.settings.weatherLocation = $0.isEmpty ? nil : $0 }
                     ))
                     .textFieldStyle(.roundedBorder)
-                    
-                    Text("(leave empty for auto-detect)")
-                        .foregroundColor(.secondary)
-                        .font(.caption)
+                    .frame(width: 250)
                 }
-            } header: {
-                Text("Server Configuration")
-                    .font(.headline)
+                .help("Leave empty to automatically detect location")
             }
         }
+        .formStyle(.grouped)
         .padding()
     }
     
@@ -101,135 +98,156 @@ struct AISettingsView: View {
         Form {
             // AI Enable Toggle
             Section {
-                Toggle("Enable AI Features", isOn: $settingsService.settings.aiEnabled)
+                Toggle("Enable AI Features", isOn: Binding(
+                    get: { settingsService.settings.aiEnabled },
+                    set: { settingsService.settings.aiEnabled = $0 }
+                ))
             }
             
             // Provider Selection
             if settingsService.settings.aiEnabled {
                 Section {
-                    Picker("AI Provider:", selection: $settingsService.settings.aiProvider) {
+                    Picker("Provider:", selection: Binding(
+                        get: { settingsService.settings.aiProvider },
+                        set: { 
+                            settingsService.settings.aiProvider = $0
+                            // Clear test results when provider changes
+                            testResult = nil
+                            modelFetchError = nil
+                        }
+                    )) {
                         Text("Ollama").tag(AIProviderType.ollama)
-                        Text("Claude (Anthropic)").tag(AIProviderType.claude)
+                        Text("Claude").tag(AIProviderType.claude)
                         Text("Disabled").tag(AIProviderType.disabled)
                     }
-                    .pickerStyle(.radioGroup)
-                } header: {
-                    Text("Provider Selection")
-                        .font(.headline)
+                    .pickerStyle(.segmented)
                 }
                 
                 // Ollama Configuration
                 if settingsService.settings.aiProvider == .ollama {
                     Section {
-                        HStack {
-                            Text("Base URL:")
-                                .frame(width: 100, alignment: .trailing)
-                            
-                            TextField("http://ollama.local/v1", text: $settingsService.settings.ollamaBaseURL)
+                        LabeledContent("Base URL:") {
+                            TextField("http://ollama.local", text: $settingsService.settings.ollamaBaseURL)
                                 .textFieldStyle(.roundedBorder)
+                                .frame(width: 300)
                         }
                         
-                        HStack {
-                            Text("Model:")
-                                .frame(width: 100, alignment: .trailing)
-                            
-                            if availableModels.isEmpty {
-                                TextField("No models loaded", text: .constant(""))
-                                    .textFieldStyle(.roundedBorder)
-                                    .disabled(true)
-                            } else {
-                                Picker("", selection: $settingsService.settings.ollamaModel) {
-                                    Text("Select a model").tag(nil as String?)
-                                    ForEach(availableModels) { model in
-                                        Text("\(model.name) (\(model.sizeString))").tag(model.name as String?)
+                        LabeledContent("Model:") {
+                            HStack(spacing: 8) {
+                                if availableModels.isEmpty {
+                                    Text("No models loaded")
+                                        .foregroundStyle(.secondary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color(nsColor: .controlBackgroundColor))
+                                        .cornerRadius(6)
+                                } else {
+                                    Picker("", selection: $settingsService.settings.ollamaModel) {
+                                        Text("Select a model").tag(nil as String?)
+                                        Divider()
+                                        ForEach(availableModels) { model in
+                                            Text("\(model.name) • \(model.sizeString)").tag(model.name as String?)
+                                        }
+                                    }
+                                    .labelsHidden()
+                                    .frame(width: 250)
+                                }
+                                
+                                Button(action: fetchOllamaModels) {
+                                    if isFetchingModels {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                    } else {
+                                        Image(systemName: "arrow.clockwise")
                                     }
                                 }
-                                .labelsHidden()
+                                .buttonStyle(.borderless)
+                                .disabled(isFetchingModels)
+                                .help("Fetch available models")
                             }
-                            
-                            Button(action: fetchOllamaModels) {
-                                if isFetchingModels {
-                                    ProgressView()
-                                        .scaleEffect(0.7)
-                                        .frame(width: 16, height: 16)
-                                } else {
-                                    Image(systemName: "arrow.clockwise")
-                                }
-                            }
-                            .buttonStyle(.borderless)
-                            .disabled(isFetchingModels)
-                            .help("Fetch available models from Ollama")
                         }
                         
                         if let error = modelFetchError {
-                            Text(error)
-                                .foregroundColor(.red)
-                                .font(.caption)
+                            HStack {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(.orange)
+                                Text(error)
+                                    .foregroundStyle(.secondary)
+                                    .font(.caption)
+                            }
                         }
                         
                         HStack {
                             Spacer()
-                            Button("Test Connection") {
+                            
+                            if let result = testResult {
+                                HStack(spacing: 4) {
+                                    Image(systemName: result.contains("✅") ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                        .foregroundStyle(result.contains("✅") ? .green : .red)
+                                    Text(result.replacingOccurrences(of: "✅ ", with: "").replacingOccurrences(of: "❌ ", with: ""))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .font(.caption)
+                            }
+                            
+                            Button(isTestingConnection ? "Testing..." : "Test Connection") {
                                 testOllamaConnection()
                             }
                             .disabled(isTestingConnection)
                         }
-                        
-                        if let result = testResult {
-                            Text(result)
-                                .foregroundColor(result.contains("✅") ? .green : .red)
-                                .font(.caption)
-                        }
                     } header: {
                         Text("Ollama Configuration")
-                            .font(.headline)
                     }
                 }
                 
                 // Claude Configuration
                 if settingsService.settings.aiProvider == .claude {
                     Section {
-                        HStack {
-                            Text("API Key:")
-                                .frame(width: 100, alignment: .trailing)
-                            
-                            SecureField("sk-ant-...", text: $claudeAPIKey)
-                                .textFieldStyle(.roundedBorder)
-                            
-                            Button("Save") {
-                                settingsService.saveClaudeAPIKey(claudeAPIKey)
+                        LabeledContent("API Key:") {
+                            HStack(spacing: 8) {
+                                SecureField("sk-ant-...", text: $claudeAPIKey)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 250)
+                                
+                                Button("Save") {
+                                    settingsService.saveClaudeAPIKey(claudeAPIKey)
+                                }
+                                .disabled(claudeAPIKey.isEmpty)
                             }
-                            .disabled(claudeAPIKey.isEmpty)
                         }
                         
-                        HStack {
-                            Text("Model:")
-                                .frame(width: 100, alignment: .trailing)
-                            
+                        LabeledContent("Model:") {
                             Picker("", selection: $settingsService.settings.claudeModel) {
-                                Text("Claude Opus 4.5").tag("claude-opus-4-5-20251101")
-                                Text("Claude Sonnet 4.5").tag("claude-sonnet-4-5-20250929")
-                                Text("Claude Haiku 4").tag("claude-haiku-4-20250228")
+                                Text("Claude Opus 4.5 (Most capable)").tag("claude-opus-4-5-20251101")
+                                Text("Claude Sonnet 4.5 (Balanced)").tag("claude-sonnet-4-5-20250929")
+                                Text("Claude Sonnet 3.5").tag("claude-3-5-sonnet-20241022")
+                                Text("Claude Haiku 3.5 (Fast)").tag("claude-3-5-haiku-20241022")
                             }
                             .labelsHidden()
+                            .frame(width: 300)
                         }
                         
                         HStack {
                             Spacer()
-                            Button("Test Connection") {
+                            
+                            if let result = testResult {
+                                HStack(spacing: 4) {
+                                    Image(systemName: result.contains("✅") ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                        .foregroundStyle(result.contains("✅") ? .green : .red)
+                                    Text(result.replacingOccurrences(of: "✅ ", with: "").replacingOccurrences(of: "❌ ", with: ""))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .font(.caption)
+                            }
+                            
+                            Button(isTestingConnection ? "Testing..." : "Test Connection") {
                                 testClaudeConnection()
                             }
                             .disabled(isTestingConnection || claudeAPIKey.isEmpty)
                         }
-                        
-                        if let result = testResult {
-                            Text(result)
-                                .foregroundColor(result.contains("✅") ? .green : .red)
-                                .font(.caption)
-                        }
                     } header: {
                         Text("Claude Configuration")
-                            .font(.headline)
                     }
                 }
                 
@@ -239,18 +257,23 @@ struct AISettingsView: View {
                         TextEditor(text: $settingsService.settings.systemPrompt)
                             .frame(height: 100)
                             .font(.system(.body, design: .monospaced))
-                            .border(Color.gray.opacity(0.2))
+                            .scrollContentBackground(.hidden)
+                            .background(Color(nsColor: .textBackgroundColor))
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+                            )
                     } header: {
                         Text("System Prompt")
-                            .font(.headline)
                     } footer: {
                         Text("Instructions for the AI assistant")
                             .font(.caption)
-                            .foregroundColor(.secondary)
                     }
                 }
             }
         }
+        .formStyle(.grouped)
         .padding()
         .onAppear {
             // Load Claude API key from Keychain
@@ -320,13 +343,19 @@ struct AISettingsView: View {
         testResult = nil
         
         Task {
-            // TODO: Implement Claude API test once ClaudeClient is created
-            // For now, just simulate a test
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-            
-            await MainActor.run {
-                testResult = "⚠️ Claude API client not yet implemented"
-                isTestingConnection = false
+            do {
+                let client = ClaudeClient(apiKey: claudeAPIKey)
+                let success = try await client.testConnection(model: settingsService.settings.claudeModel)
+                
+                await MainActor.run {
+                    testResult = success ? "✅ Connection successful" : "❌ Connection failed"
+                    isTestingConnection = false
+                }
+            } catch {
+                await MainActor.run {
+                    testResult = "❌ \(error.localizedDescription)"
+                    isTestingConnection = false
+                }
             }
         }
     }

@@ -17,6 +17,7 @@ class AppCoordinator: ObservableObject {
     let heartbeatService = HeartbeatService()
     let serverService = ServerService()
     let bonjourService = BonjourService()
+    let settingsService = SettingsService()
     
     private var hasInitialized = false
     
@@ -40,6 +41,7 @@ class AppCoordinator: ObservableObject {
         weatherService.serverService = serverService
         serverService.heartbeatService = heartbeatService
         serverService.weatherService = weatherService
+        serverService.settingsService = settingsService
         
         // Start heartbeat service
         heartbeatService.start()
@@ -71,7 +73,15 @@ struct NylServerApp: App {
                 .environmentObject(coordinator.heartbeatService)
                 .environmentObject(coordinator.serverService)
                 .environmentObject(coordinator.bonjourService)
+                .environmentObject(coordinator.settingsService)
         }
         .menuBarExtraStyle(.window)
+        
+        // Settings window
+        Window("Settings", id: "settings") {
+            SettingsView(settingsService: coordinator.settingsService)
+        }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
     }
 }
