@@ -14,44 +14,33 @@ struct ContentView: View {
     @State private var selectedServer: DiscoveredServer?
     @State private var isShowingServers = false
     @State private var draftMessage = ""
-    @State private var messages: [ChatMessage] = [
-        ChatMessage(role: .assistant, content: "Hi! I’m Nyl. Ask me about your system status or the weather."),
-        ChatMessage(role: .user, content: "Is the server running?"),
-        ChatMessage(role: .assistant, content: "Yes — it’s running and broadcasting updates.")
-    ]
+    @State private var messages: [ChatMessage] = []
     @State private var streamingAssistantIndex: Int?
-    @State private var streamingTextToken = ""
-    @State private var lastScrollUpdate = Date.distantPast
     @AppStorage("nylAppearanceMode") private var appearanceMode = AppearanceMode.system
     @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
         NavigationStack {
-            ZStack {
-                LinearGradient(
-                    colors: backgroundGradientColors,
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
-
-                VStack(spacing: 0) {
-                    headerBar
-                    chatList
-                    inputBar
-                }
+            ZStack(alignment: .bottom) {
+                // iOS-native system background
+                Color(uiColor: .systemGroupedBackground)
+                    .ignoresSafeArea()
+                
+                // Chat content
+                chatContent
+                
+                // Liquid Glass input bar
+                inputBar
             }
             .navigationTitle("Nyl")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        isShowingServers = true
-                    } label: {
-                        Image(systemName: "server.rack")
-                    }
-                    .accessibilityLabel("Servers")
+                ToolbarItem(placement: .topBarTrailing) {
+                    connectionButton
                 }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Color.clear.frame(height: 0)
             }
         }
         .preferredColorScheme(appearanceMode.preferredColorScheme)
@@ -67,137 +56,222 @@ struct ContentView: View {
     }
     
     // MARK: - Chat UI
-
-    private var headerBar: some View {
-        VStack(spacing: 12) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Nyl")
-                        .font(.system(size: 26, weight: .bold, design: .rounded))
-                    Text(connectionSubtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button {
-                    isShowingServers = true
-                } label: {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(connectionColor)
-                            .frame(width: 8, height: 8)
-                        Text(connectionLabel)
-                            .font(.caption)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.white.opacity(0.9))
-                    .clipShape(Capsule())
-                    .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 2)
-                }
-            }
-            .padding(.horizontal)
-
-            if let error = apiService.error {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
-            }
-        }
-        .padding(.top, 8)
-        .padding(.bottom, 4)
-    }
-
-    private var chatList: some View {
+    
+    private var chatContent: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 12) {
+                LazyVStack(spacing: 16) {
                     if messages.isEmpty {
                         emptyChatState
                     } else {
                         ForEach(Array(messages.enumerated()), id: \.offset) { index, message in
                             MessageBubble(message: message)
                                 .id(index)
+                                .onChange(of: message.content) { _, _ in
+                                    // Scroll when any message content changes (streaming)
+                                    if index == messages.count - 1 {
+                                        proxy.scrollTo(index, anchor: .bottom)
+                                    }
+                                }
                         }
                     }
                 }
-                .padding(.horizontal)
-                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 100) // Space for input bar
             }
-            .onChange(of: messages.count) { _, _ in
-                if let lastIndex = messages.indices.last {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(lastIndex, anchor: .bottom)
-                    }
-                }
-            }
-            .onChange(of: streamingTextToken) { _, _ in
-                if let lastIndex = messages.indices.last {
-                    withAnimation(.linear(duration: 0.1)) {
-                        proxy.scrollTo(lastIndex, anchor: .bottom)
+            .onChange(of: messages.count) { _, newCount in
+                // Scroll when new message is added
+                if newCount > 0 {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        proxy.scrollTo(newCount - 1, anchor: .bottom)
                     }
                 }
             }
         }
     }
-
+    
     private var inputBar: some View {
-        VStack(spacing: 8) {
-            HStack(alignment: .bottom, spacing: 10) {
-                TextField("Ask Nyl anything...", text: $draftMessage, axis: .vertical)
-                    .lineLimit(1...4)
-                    .textFieldStyle(.roundedBorder)
-
-                Button {
-                    sendMessage()
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 30))
-                        .foregroundStyle(draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .gray : .blue)
-                }
-                .disabled(draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || apiService.isChatStreaming)
+        VStack(spacing: 0) {
+            // Error banner
+            if let error = apiService.error {
+                errorBanner(error)
             }
-
-            HStack {
-                Label(currentModelLabel, systemImage: "brain")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if apiService.isLoading || apiService.isChatStreaming {
-                    ProgressView()
-                        .controlSize(.small)
+            
+            Divider()
+                .overlay(.quaternary)
+            
+            VStack(spacing: 8) {
+                // Main input row
+                HStack(alignment: .bottom, spacing: 12) {
+                    // Text field
+                    TextField("Message", text: $draftMessage, axis: .vertical)
+                        .lineLimit(1...5)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background {
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .fill(.regularMaterial)
+                                .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
+                        }
+                        .onSubmit {
+                            sendMessage()
+                        }
+                    
+                    // Send button
+                    Button(action: sendMessage) {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 34))
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(canSendMessage ? .blue : .secondary)
+                    }
+                    .disabled(!canSendMessage)
+                    .buttonStyle(.plain)
+                    .sensoryFeedback(.impact(flexibility: .soft), trigger: messages.count)
                 }
+                
+                // Status row
+                HStack(spacing: 8) {
+                    // Model indicator
+                    Label {
+                        Text(currentModelLabel)
+                            .font(.caption)
+                    } icon: {
+                        Image(systemName: "cpu")
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                    .foregroundStyle(.secondary)
+                    
+                    Spacer()
+                    
+                    // Streaming indicator
+                    if apiService.isChatStreaming {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.mini)
+                            Text("Streaming")
+                                .font(.caption2)
+                        }
+                        .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .shadow(color: .black.opacity(0.08), radius: 10, y: -5)
             }
         }
-        .padding()
-        .background(.ultraThinMaterial)
     }
-
-    private var emptyChatState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 44))
-                .foregroundStyle(.blue)
-            Text("Start a conversation")
-                .font(.headline)
-            Text("Your server status and weather are available in chat.")
+    
+    private func errorBanner(_ message: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            
+            Text(message)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+            
+            Spacer()
+            
+            Button {
+                apiService.error = nil
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
         }
-        .frame(maxWidth: .infinity, minHeight: 200)
-        .padding(.top, 40)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.regularMaterial)
     }
-
+    
+    private var connectionButton: some View {
+        Button {
+            isShowingServers = true
+        } label: {
+            Label {
+                Text(connectionLabel)
+                    .font(.subheadline.weight(.medium))
+            } icon: {
+                Image(systemName: connectionSymbol)
+                    .symbolRenderingMode(.hierarchical)
+                    .symbolEffect(.variableColor, isActive: discoveryService.isSearching)
+            }
+            .foregroundStyle(connectionColor)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background {
+                Capsule()
+                    .fill(.regularMaterial)
+                    .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+    
+    private var emptyChatState: some View {
+        VStack(spacing: 20) {
+            Spacer()
+            
+            Image(systemName: "message.badge.waveform.fill")
+                .font(.system(size: 60))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.blue)
+            
+            VStack(spacing: 8) {
+                Text("Start a Conversation")
+                    .font(.title2.weight(.semibold))
+                
+                Text("Ask about weather, server status, or anything else.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            
+            // Example prompts
+            VStack(spacing: 10) {
+                examplePromptButton("What's the weather?")
+                examplePromptButton("Is the server running?")
+                examplePromptButton("System status")
+            }
+            .padding(.top, 8)
+            
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 32)
+    }
+    
+    private func examplePromptButton(_ prompt: String) -> some View {
+        Button {
+            draftMessage = prompt
+        } label: {
+            Text(prompt)
+                .font(.subheadline)
+                .foregroundStyle(.blue)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.blue.opacity(0.1), in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+    
     private var serverSheet: some View {
         NavigationStack {
             List {
                 Section("Nearby Servers") {
                     if discoveryService.discoveredServers.isEmpty {
-                        Text("No servers discovered yet.")
-                            .foregroundStyle(.secondary)
+                        ContentUnavailableView(
+                            "No Servers Found",
+                            systemImage: "antenna.radiowaves.left.and.right.slash",
+                            description: Text("Make sure your server is running on the same network.")
+                        )
+                        .listRowBackground(Color.clear)
                     } else {
                         ForEach(discoveryService.discoveredServers) { server in
                             Button {
@@ -211,32 +285,35 @@ struct ContentView: View {
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
-                                .padding(.vertical, 4)
                             }
                         }
                     }
                 }
-
+                
                 Section("Connection") {
-                    HStack {
-                        Text("Status")
-                        Spacer()
-                        Text(connectionLabel)
-                            .foregroundStyle(.secondary)
+                    LabeledContent("Status") {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(connectionColor)
+                                .frame(width: 8, height: 8)
+                            Text(connectionLabel)
+                                .foregroundStyle(.secondary)
+                        }
                     }
-
+                    
                     if let server = selectedServer {
-                        Button("Disconnect") {
+                        LabeledContent("Server") {
+                            Text(server.name)
+                                .foregroundStyle(.secondary)
+                        }
+                        
+                        Button("Disconnect", role: .destructive) {
                             disconnect()
                             isShowingServers = false
                         }
-                        .foregroundStyle(.red)
-                        Text("Connected to \(server.name)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     }
                 }
-
+                
                 Section("Appearance") {
                     Picker("Theme", selection: $appearanceMode) {
                         ForEach(AppearanceMode.allCases) { mode in
@@ -246,9 +323,10 @@ struct ContentView: View {
                     .pickerStyle(.segmented)
                 }
             }
-            .navigationTitle("Servers")
+            .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
                         isShowingServers = false
                     }
@@ -263,6 +341,11 @@ struct ContentView: View {
         selectedServer = server
         apiService.connect(to: server)
         discoveryService.stopSearching()
+        
+        // Fetch available models after connecting
+        Task {
+            await apiService.fetchModels()
+        }
     }
     
     private func disconnect() {
@@ -270,142 +353,170 @@ struct ContentView: View {
         apiService.disconnect()
         discoveryService.startSearching()
     }
-
+    
     private func autoConnectIfNeeded(_ servers: [DiscoveredServer]) {
         guard selectedServer == nil, let first = servers.first else { return }
         connect(to: first)
     }
-
+    
     private func sendMessage() {
         let trimmed = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        
         let userMessage = ChatMessage(role: .user, content: trimmed)
         let requestMessages = messages + [userMessage]
         messages.append(userMessage)
         draftMessage = ""
-
+        
         messages.append(ChatMessage(role: .assistant, content: ""))
         streamingAssistantIndex = messages.count - 1
-
+        
         apiService.streamChat(messages: requestMessages) { [weak apiService] event in
-            guard apiService != nil else { return }
+            guard let apiService = apiService else { return }
             switch event.type {
             case .delta:
-                if let index = streamingAssistantIndex, let delta = event.delta {
-                    let current = messages[index].content + delta
-                    messages[index] = ChatMessage(role: .assistant, content: current)
-                    if Date().timeIntervalSince(lastScrollUpdate) > 0.08 {
-                        lastScrollUpdate = Date()
-                        streamingTextToken = current
-                    }
+                if let index = streamingAssistantIndex, 
+                   index < messages.count,
+                   let delta = event.delta {
+                    messages[index] = ChatMessage(
+                        role: .assistant, 
+                        content: messages[index].content + delta
+                    )
                 }
             case .done:
                 streamingAssistantIndex = nil
-                streamingTextToken = ""
             case .error:
+                // Remove incomplete message on error
+                if let index = streamingAssistantIndex, index < messages.count {
+                    messages.remove(at: index)
+                }
                 streamingAssistantIndex = nil
-                streamingTextToken = ""
                 if let message = event.error {
                     apiService.error = message
                 }
             }
         }
     }
-
+    
+    // MARK: - Computed Properties
+    
+    private var canSendMessage: Bool {
+        !draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && 
+        !apiService.isChatStreaming &&
+        selectedServer != nil
+    }
+    
     private var connectionLabel: String {
         if selectedServer == nil {
-            return discoveryService.isSearching ? "Searching..." : "Disconnected"
+            return discoveryService.isSearching ? "Searching" : "Disconnected"
         }
         return apiService.isWebSocketConnected ? "Live" : "Connected"
     }
-
-    private var connectionSubtitle: String {
-        if let server = selectedServer {
-            return "\(server.name) • \(server.host):\(server.port)"
+    
+    private var connectionSymbol: String {
+        if selectedServer == nil {
+            return "antenna.radiowaves.left.and.right"
         }
-        return "Looking for a nearby server"
+        return apiService.isWebSocketConnected ? "circle.fill" : "circle"
     }
-
+    
     private var connectionColor: Color {
         if selectedServer == nil {
-            return discoveryService.isSearching ? .orange : .gray
+            return discoveryService.isSearching ? .orange : .secondary
         }
         return apiService.isWebSocketConnected ? .green : .yellow
     }
-
+    
     private var currentModelLabel: String {
-        if let model = apiService.modelsResponse?.selectedModel {
-            return model
-        }
-        return "Default model"
-    }
-
-    private var backgroundGradientColors: [Color] {
-        switch appearanceMode {
-        case .dark:
-            return [Color(red: 0.07, green: 0.08, blue: 0.12), Color(red: 0.12, green: 0.12, blue: 0.18)]
-        case .light:
-            return [Color(white: 0.97), Color(white: 0.93)]
-        case .system:
-            if colorScheme == .dark {
-                return [Color(red: 0.07, green: 0.08, blue: 0.12), Color(red: 0.12, green: 0.12, blue: 0.18)]
-            }
-            return [Color(white: 0.97), Color(white: 0.93)]
-        }
+        apiService.modelsResponse?.selectedModel ?? "No model selected"
     }
 }
 
-#Preview {
-    ContentView()
-}
+// MARK: - Message Bubble
+
 private struct MessageBubble: View {
     let message: ChatMessage
-
+    
     var body: some View {
-        HStack {
+        HStack(alignment: .bottom, spacing: 10) {
             if message.role == .assistant {
-                bubble
-                Spacer()
+                // Avatar
+                Circle()
+                    .fill(.blue.gradient)
+                    .frame(width: 30, height: 30)
+                    .overlay {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                
+                // Message bubble
+                Text(message.content.isEmpty ? " " : message.content)
+                    .textSelection(.enabled)
+                    .font(.body)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background {
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: 18,
+                            bottomLeadingRadius: 4,
+                            bottomTrailingRadius: 18,
+                            topTrailingRadius: 18,
+                            style: .continuous
+                        )
+                        .fill(.thinMaterial)
+                        .shadow(color: .black.opacity(0.04), radius: 3, y: 1)
+                    }
+                    .contextMenu {
+                        Button {
+                            UIPasteboard.general.string = message.content
+                        } label: {
+                            Label("Copy", systemImage: "doc.on.doc")
+                        }
+                    }
+                
+                Spacer(minLength: 60)
             } else {
-                Spacer()
-                bubble
+                Spacer(minLength: 60)
+                
+                // User bubble
+                Text(message.content)
+                    .textSelection(.enabled)
+                    .font(.body)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background {
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: 18,
+                            bottomLeadingRadius: 18,
+                            bottomTrailingRadius: 4,
+                            topTrailingRadius: 18,
+                            style: .continuous
+                        )
+                        .fill(.blue)
+                    }
+                    .contextMenu {
+                        Button {
+                            UIPasteboard.general.string = message.content
+                        } label: {
+                            Label("Copy", systemImage: "doc.on.doc")
+                        }
+                    }
             }
         }
     }
-
-    private var bubble: some View {
-        Text(message.content)
-            .font(.body)
-            .foregroundColor(message.role == .assistant ? .primary : .white)
-            .padding(12)
-            .background(bubbleBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
-            .frame(maxWidth: 280, alignment: message.role == .assistant ? .leading : .trailing)
-    }
-
-    private var bubbleBackground: some View {
-        if message.role == .assistant {
-            return AnyView(Color(uiColor: .secondarySystemBackground))
-        }
-
-        return AnyView(
-            LinearGradient(
-                colors: [Color.blue.opacity(0.85), Color.indigo.opacity(0.9)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
-    }
 }
+
+// MARK: - Appearance Mode
 
 private enum AppearanceMode: String, CaseIterable, Identifiable {
     case system
     case light
     case dark
-
+    
     var id: String { rawValue }
-
+    
     var title: String {
         switch self {
         case .system: return "System"
@@ -413,7 +524,7 @@ private enum AppearanceMode: String, CaseIterable, Identifiable {
         case .dark: return "Dark"
         }
     }
-
+    
     var preferredColorScheme: ColorScheme? {
         switch self {
         case .system: return nil
@@ -421,4 +532,8 @@ private enum AppearanceMode: String, CaseIterable, Identifiable {
         case .dark: return .dark
         }
     }
+}
+
+#Preview {
+    ContentView()
 }
