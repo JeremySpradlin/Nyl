@@ -48,6 +48,10 @@ class BonjourService: NSObject, ObservableObject {
         netService = nil
         isAdvertising = false
     }
+    
+    deinit {
+        netService?.stop()
+    }
 }
 
 // MARK: - NetServiceDelegate

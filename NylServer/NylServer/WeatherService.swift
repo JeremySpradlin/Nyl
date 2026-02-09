@@ -44,8 +44,8 @@ class WeatherService: NSObject, ObservableObject {
         
         switch authStatus {
         case .notDetermined:
-            locationManager.requestAlwaysAuthorization()
-        case .authorizedAlways:
+            locationManager.requestWhenInUseAuthorization()
+        case .authorizedWhenInUse, .authorizedAlways:
             locationManager.requestLocation()
         case .denied, .restricted:
             error = "Location access denied"
@@ -68,12 +68,8 @@ class WeatherService: NSObject, ObservableObject {
         do {
             let weather = try await weatherKit.weather(for: location)
             
-            // Update UI with weather data
-            temperature = weather.currentWeather.temperature.value
-            
-            // Convert temperature to Fahrenheit
-            let fahrenheit = (temperature * 9/5) + 32
-            temperature = fahrenheit
+            // Update UI with weather data (convert to Fahrenheit)
+            temperature = weather.currentWeather.temperature.converted(to: .fahrenheit).value
             
             // Get condition description
             condition = weather.currentWeather.condition.description

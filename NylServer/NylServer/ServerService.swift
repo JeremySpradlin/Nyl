@@ -60,7 +60,11 @@ class ServerService: ObservableObject {
         
         // Start the server using Vapor's async boot + run pattern
         try await app.asyncBoot()
-        try await app.server.start(address: .hostname(app.http.server.configuration.hostname, port: app.http.server.configuration.port))
+        
+        // Start server in detached task so it doesn't block
+        Task.detached {
+            try await app.server.start(address: .hostname(app.http.server.configuration.hostname, port: app.http.server.configuration.port))
+        }
     }
     
     /// Stop the HTTP server
