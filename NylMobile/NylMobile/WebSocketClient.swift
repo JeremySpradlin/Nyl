@@ -23,6 +23,8 @@ class WebSocketClient: NSObject, ObservableObject {
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 5
     private var baseURL: String?
+    private var shouldReconnect = false
+    private var reconnectTask: Task<Void, Never>?
     
     /// Cached JSON decoder for WebSocket messages
     private let decoder: JSONDecoder = {
@@ -40,6 +42,8 @@ class WebSocketClient: NSObject, ObservableObject {
     /// Connect to WebSocket server
     func connect(to baseURL: String) {
         self.baseURL = baseURL
+        shouldReconnect = true
+        reconnectTask?.cancel()
         
         // Convert HTTP URL to WebSocket URL
         let wsURL = baseURL.replacingOccurrences(of: "http://", with: "ws://")
@@ -65,6 +69,9 @@ class WebSocketClient: NSObject, ObservableObject {
         isConnected = false
         reconnectAttempts = 0
         baseURL = nil
+        shouldReconnect = false
+        reconnectTask?.cancel()
+        reconnectTask = nil
         
         // Cancel in background to avoid MainActor isolation issues
         Task.detached {
@@ -125,9 +132,11 @@ class WebSocketClient: NSObject, ObservableObject {
     
     private func handleDisconnect() {
         isConnected = false
-        
+
         // Attempt reconnect with exponential backoff
-        guard reconnectAttempts < maxReconnectAttempts, let baseURL = baseURL else {
+        guard shouldReconnect,
+              reconnectAttempts < maxReconnectAttempts,
+              let baseURL = baseURL else {
             print("❌ Max reconnect attempts reached or no base URL")
             return
         }
@@ -137,8 +146,9 @@ class WebSocketClient: NSObject, ObservableObject {
         
         print("🔄 Reconnecting in \(delay) seconds (attempt \(reconnectAttempts)/\(maxReconnectAttempts))...")
         
-        Task {
+        reconnectTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard let self = self, self.shouldReconnect else { return }
             self.connect(to: baseURL)
         }
     }

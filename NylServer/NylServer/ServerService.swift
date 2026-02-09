@@ -37,6 +37,7 @@ class ServerService: ObservableObject {
         guard !isRunning, application == nil else {
             return
         }
+        error = nil
         
         // Create Vapor application - use detect() like standard Vapor apps
         let env = try Environment.detect()
@@ -57,14 +58,25 @@ class ServerService: ObservableObject {
         
         // Store application
         self.application = app
-        isRunning = true
         
         // Start the server using Vapor's async boot + run pattern
         try await app.asyncBoot()
         
         // Start server in detached task so it doesn't block
-        Task.detached {
-            try await app.server.start(address: .hostname(app.http.server.configuration.hostname, port: app.http.server.configuration.port))
+        Task { [weak self] in
+            do {
+                try await app.server.start(address: .hostname(app.http.server.configuration.hostname, port: app.http.server.configuration.port))
+                await MainActor.run {
+                    self?.isRunning = true
+                }
+            } catch {
+                await MainActor.run {
+                    self?.error = "Failed to start server: \(error.localizedDescription)"
+                    self?.isRunning = false
+                    self?.application = nil
+                }
+                app.shutdown()
+            }
         }
     }
     

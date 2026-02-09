@@ -50,22 +50,18 @@ class WebSocketManager: ObservableObject {
             print("❌ Failed to encode WebSocket event")
             return
         }
-
-        var failedConnections: [UUID] = []
         
-        for (id, ws) in connections {
-            Task { [weak self] in
+        let currentConnections = connections
+        Task { [weak self] in
+            for (id, ws) in currentConnections {
                 do {
                     try await ws.send(jsonString)
                 } catch {
                     print("❌ Failed to send to client \(id): \(error.localizedDescription)")
-                    failedConnections.append(id)
-                    // Remove dead connection
                     await self?.removeConnection(id: id)
                 }
             }
+            print("📡 Broadcast \(event.type.rawValue) to \(currentConnections.count) client(s)")
         }
-
-        print("📡 Broadcast \(event.type.rawValue) to \(connections.count) client(s)")
     }
 }

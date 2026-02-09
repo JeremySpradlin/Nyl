@@ -22,6 +22,7 @@ class ServerDiscoveryService: ObservableObject {
     private var browser: NWBrowser?
     private var discoveredEndpoints: [NWEndpoint: NWBrowser.Result] = [:]
     private var activeConnections: [NWEndpoint: NWConnection] = [:]
+    private var endpointToServer: [NWEndpoint: DiscoveredServer] = [:]
     
     // MARK: - Public Methods
     
@@ -36,6 +37,7 @@ class ServerDiscoveryService: ObservableObject {
         isSearching = true
         discoveredServers.removeAll()
         discoveredEndpoints.removeAll()
+        endpointToServer.removeAll()
         
         // Create browser parameters for Bonjour service discovery
         let parameters = NWParameters()
@@ -71,6 +73,7 @@ class ServerDiscoveryService: ObservableObject {
         browser = nil
         isSearching = false
         discoveredEndpoints.removeAll()
+        endpointToServer.removeAll()
         
         // Cancel all active connections
         for connection in activeConnections.values {
@@ -167,6 +170,7 @@ class ServerDiscoveryService: ObservableObject {
                         
                         if !self.discoveredServers.contains(where: { $0.host == server.host && $0.port == server.port }) {
                             self.discoveredServers.append(server)
+                            self.endpointToServer[result.endpoint] = server
                             self.isSearching = false // Stop showing spinner once we find a server
                             print("✅ Added server to list. Total servers: \(self.discoveredServers.count)")
                         }
@@ -194,7 +198,11 @@ class ServerDiscoveryService: ObservableObject {
         }
         
         discoveredEndpoints.removeValue(forKey: result.endpoint)
-        discoveredServers.removeAll { $0.name == name }
+        if let server = endpointToServer.removeValue(forKey: result.endpoint) {
+            discoveredServers.removeAll { $0.host == server.host && $0.port == server.port }
+        } else {
+            discoveredServers.removeAll { $0.name == name }
+        }
         print("🗑️ Removed server: \(name)")
     }
 }
