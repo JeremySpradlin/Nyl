@@ -21,6 +21,7 @@ class NylAPIService: ObservableObject {
     @Published var isWebSocketConnected: Bool = false
     @Published var lastWebSocketEvent: WebSocketEventType?
     @Published var modelsResponse: ModelsResponse?
+    @Published var isChatStreaming: Bool = false
     
     // MARK: - Private Properties
     
@@ -28,6 +29,7 @@ class NylAPIService: ObservableObject {
     private let session: URLSession
     private let wsClient = WebSocketClient()
     private var cancellables = Set<AnyCancellable>()
+    private var chatStreamTask: Task<Void, Never>?
     
     /// Cached JSON decoder for API responses
     private let decoder: JSONDecoder = {
@@ -214,6 +216,9 @@ class NylAPIService: ObservableObject {
         lastUpdated = nil
         isWebSocketConnected = false
         lastWebSocketEvent = nil
+        chatStreamTask?.cancel()
+        chatStreamTask = nil
+        isChatStreaming = false
     }
     
     deinit {
@@ -255,6 +260,123 @@ class NylAPIService: ObservableObject {
             Task {
                 await fetchStatus()
             }
+        }
+    }
+
+    // MARK: - Chat
+
+    func sendChat(messages: [ChatMessage], model: String? = nil, temperature: Double? = nil) async throws -> ChatResponse {
+        guard let baseURL = baseURL else {
+            throw URLError(.badURL)
+        }
+
+        guard let url = URL(string: "\(baseURL)/v1/chat") else {
+            throw URLError(.badURL)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+
+        let payload = ChatRequest(messages: messages, model: model, temperature: temperature)
+        request.httpBody = try JSONEncoder().encode(payload)
+
+        let (data, response) = try await session.data(for: request)
+        try validateResponse(response, data: data)
+
+        return try decoder.decode(ChatResponse.self, from: data)
+    }
+
+    func streamChat(
+        messages: [ChatMessage],
+        model: String? = nil,
+        temperature: Double? = nil,
+        onEvent: @escaping (ChatStreamEvent) -> Void
+    ) {
+        chatStreamTask?.cancel()
+
+        chatStreamTask = Task { [weak self] in
+            guard let self = self else { return }
+            do {
+                try await self.streamChatInternal(messages: messages, model: model, temperature: temperature, onEvent: onEvent)
+            } catch {
+                await MainActor.run {
+                    onEvent(ChatStreamEvent(type: .error, error: error.localizedDescription))
+                    self.isChatStreaming = false
+                }
+            }
+        }
+    }
+
+    private func streamChatInternal(
+        messages: [ChatMessage],
+        model: String?,
+        temperature: Double?,
+        onEvent: @escaping (ChatStreamEvent) -> Void
+    ) async throws {
+        guard let baseURL = baseURL else {
+            throw URLError(.badURL)
+        }
+
+        guard let url = URL(string: "\(baseURL)/v1/chat/stream") else {
+            throw URLError(.badURL)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+
+        let payload = ChatRequest(messages: messages, model: model, temperature: temperature)
+        request.httpBody = try JSONEncoder().encode(payload)
+
+        let (bytes, response) = try await session.bytes(for: request)
+        try validateResponse(response, data: nil)
+
+        await MainActor.run {
+            self.isChatStreaming = true
+        }
+
+        for try await line in bytes.lines {
+            if Task.isCancelled { break }
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.hasPrefix("data:") else { continue }
+            let dataString = trimmed.replacingOccurrences(of: "data:", with: "").trimmingCharacters(in: .whitespaces)
+            guard let data = dataString.data(using: .utf8) else { continue }
+            if let event = try? decoder.decode(ChatStreamEvent.self, from: data) {
+                await MainActor.run {
+                    onEvent(event)
+                }
+                if event.type == .done || event.type == .error {
+                    break
+                }
+            }
+        }
+
+        await MainActor.run {
+            self.isChatStreaming = false
+        }
+    }
+
+    private func validateResponse(_ response: URLResponse, data: Data?) throws {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            if let data = data,
+               let responseString = String(data: data, encoding: .utf8),
+               !responseString.isEmpty {
+                throw NSError(
+                    domain: "NylAPIService",
+                    code: httpResponse.statusCode,
+                    userInfo: [NSLocalizedDescriptionKey: responseString]
+                )
+            }
+            throw NSError(
+                domain: "NylAPIService",
+                code: httpResponse.statusCode,
+                userInfo: [NSLocalizedDescriptionKey: "Server error: \(httpResponse.statusCode)"]
+            )
         }
     }
 }

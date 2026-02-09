@@ -19,6 +19,9 @@ struct ContentView: View {
         ChatMessage(role: .user, content: "Is the server running?"),
         ChatMessage(role: .assistant, content: "Yes — it’s running and broadcasting updates.")
     ]
+    @State private var streamingAssistantIndex: Int?
+    @State private var streamingTextToken = ""
+    @State private var lastScrollUpdate = Date.distantPast
     @AppStorage("nylAppearanceMode") private var appearanceMode = AppearanceMode.system
     @Environment(\.colorScheme) private var colorScheme
     
@@ -130,6 +133,13 @@ struct ContentView: View {
                     }
                 }
             }
+            .onChange(of: streamingTextToken) { _, _ in
+                if let lastIndex = messages.indices.last {
+                    withAnimation(.linear(duration: 0.1)) {
+                        proxy.scrollTo(lastIndex, anchor: .bottom)
+                    }
+                }
+            }
         }
     }
 
@@ -147,7 +157,7 @@ struct ContentView: View {
                         .font(.system(size: 30))
                         .foregroundStyle(draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .gray : .blue)
                 }
-                .disabled(draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || apiService.isChatStreaming)
             }
 
             HStack {
@@ -155,7 +165,7 @@ struct ContentView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                if apiService.isLoading {
+                if apiService.isLoading || apiService.isChatStreaming {
                     ProgressView()
                         .controlSize(.small)
                 }
@@ -269,11 +279,37 @@ struct ContentView: View {
     private func sendMessage() {
         let trimmed = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        messages.append(ChatMessage(role: .user, content: trimmed))
+        let userMessage = ChatMessage(role: .user, content: trimmed)
+        let requestMessages = messages + [userMessage]
+        messages.append(userMessage)
         draftMessage = ""
 
-        // Placeholder assistant response for UI sketching.
-        messages.append(ChatMessage(role: .assistant, content: "Got it — I'll respond once chat is wired."))
+        messages.append(ChatMessage(role: .assistant, content: ""))
+        streamingAssistantIndex = messages.count - 1
+
+        apiService.streamChat(messages: requestMessages) { [weak apiService] event in
+            guard apiService != nil else { return }
+            switch event.type {
+            case .delta:
+                if let index = streamingAssistantIndex, let delta = event.delta {
+                    let current = messages[index].content + delta
+                    messages[index] = ChatMessage(role: .assistant, content: current)
+                    if Date().timeIntervalSince(lastScrollUpdate) > 0.08 {
+                        lastScrollUpdate = Date()
+                        streamingTextToken = current
+                    }
+                }
+            case .done:
+                streamingAssistantIndex = nil
+                streamingTextToken = ""
+            case .error:
+                streamingAssistantIndex = nil
+                streamingTextToken = ""
+                if let message = event.error {
+                    apiService.error = message
+                }
+            }
+        }
     }
 
     private var connectionLabel: String {

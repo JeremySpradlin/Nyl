@@ -6,12 +6,15 @@
 //
 
 import SwiftUI
+import NylKit
 
 struct ContentView: View {
     @EnvironmentObject var weatherService: WeatherService
     @EnvironmentObject var heartbeatService: HeartbeatService
     @EnvironmentObject var serverService: ServerService
     @EnvironmentObject var bonjourService: BonjourService
+    @EnvironmentObject var settingsService: SettingsService
+    @Environment(\.openWindow) private var openWindow
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -175,9 +178,57 @@ struct ContentView: View {
             
             Divider()
             
+            // AI Status (if enabled)
+            if settingsService.settings.aiEnabled && settingsService.settings.aiProvider != .disabled {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("AI Assistant", systemImage: "brain")
+                        .font(.headline)
+                        .foregroundStyle(.purple)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Provider:")
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text(settingsService.settings.aiProvider.rawValue.capitalized)
+                                .fontWeight(.medium)
+                        }
+                        
+                        if settingsService.settings.aiProvider == .ollama,
+                           let model = settingsService.settings.ollamaModel {
+                            HStack {
+                                Text("Model:")
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text(model)
+                                    .fontWeight(.medium)
+                            }
+                        } else if settingsService.settings.aiProvider == .claude {
+                            HStack {
+                                Text("Model:")
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text(settingsService.settings.claudeModel)
+                                    .fontWeight(.medium)
+                            }
+                        }
+                    }
+                    .font(.caption)
+                }
+                
+                Divider()
+            }
+            
             // Controls
             HStack {
+                Button("Settings...") {
+                    openWindow(id: "settings")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                
                 Spacer()
+                
                 Button("Quit") {
                     NSApplication.shared.terminate(nil)
                 }
@@ -213,4 +264,5 @@ struct ContentView: View {
         .environmentObject(HeartbeatService())
         .environmentObject(ServerService())
         .environmentObject(BonjourService())
+        .environmentObject(SettingsService())
 }
